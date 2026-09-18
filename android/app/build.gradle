@@ -1,0 +1,98 @@
+apply plugin: 'com.android.application'
+
+/**
+ * 배포용 서명 키.
+ *
+ * 서명이 없으면 assembleRelease 는 `app-release-unsigned.apk` 를 내놓고, 그것은
+ * 기기에 설치되지 않는다 — 빌드는 성공했는데 깔리지 않아 원인이 드러나지 않는다.
+ *
+ * 값은 저장소 밖(keystore.properties)에 둔다. 그 파일이 없으면 서명 설정을 아예
+ * 만들지 않아, 키가 없는 사람도 debug 빌드는 그대로 할 수 있다.
+ */
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    if (keystorePropsFile.exists()) {
+        signingConfigs {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    namespace "io.processgpt.app"
+    // BuildConfig.DEBUG 를 쓰려면 켜야 한다. AGP 8 부터 기본이 꺼짐이다.
+    // MainActivity 가 개발 빌드에서만 평문 서버를 허용하는 데 쓴다.
+    buildFeatures {
+        buildConfig true
+    }
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.process.gpt"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+
+    // 기기 토큰을 네이티브에서 직접 받기 위해 필요하다.
+    //
+    // 푸시 플러그인이 이미 이 라이브러리를 끌어오지만, 그것은 그 모듈의 의존성이라
+    // 앱 모듈의 코드에서는 클래스가 보이지 않는다. 여기서 한 번 더 선언해야
+    // PushRegistrar 가 FirebaseMessaging 을 쓸 수 있다.
+    //
+    // 버전은 google-services 플러그인이 BOM 으로 맞춰 준다.
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-messaging'
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

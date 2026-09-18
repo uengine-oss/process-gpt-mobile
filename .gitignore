@@ -1,0 +1,35 @@
+node_modules/
+
+# Capacitor 가 웹 빌드를 복사해 넣는 곳. 원본은 process-gpt-vue3 에 있다.
+android/app/src/main/assets/public/
+ios/App/App/public/
+
+# 로컬 SDK 경로. 사람마다 다르다.
+android/local.properties
+
+# CocoaPods 산출물. macOS 에서 pod install 로 만들어진다.
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+
+# 배포용 서명 키와 그 비밀번호.
+#
+# 이것이 새면 누구나 이 앱의 다음 판으로 인정되는 APK 에 서명할 수 있다.
+# 둘은 따로 보관하고, 릴리스 빌드할 때만 자리에 둔다(CI 라면 시크릿으로 주입).
+android/keystore.properties
+*.jks
+*.keystore
+
+# 빌드 산출물.
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+*.apk
+*.aab
+
+# 에디터 설정.
+.idea/
+*.iml
+.DS_Store

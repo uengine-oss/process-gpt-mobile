@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "196216847679",
+    "project_id": "process-gpt-2abfe",
+    "storage_bucket": "process-gpt-2abfe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:196216847679:android:558cfb296fe828e3bda78a",
+        "android_client_info": {
+          "package_name": "com.process.gpt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCCy86Tvh6JlLSJBlydlq-WlzdtFuzbJEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:196216847679:android:f1d257935daa36a9bda78a",
+        "android_client_info": {
+          "package_name": "io.processgpt.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCCy86Tvh6JlLSJBlydlq-WlzdtFuzbJEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,28 @@
+{
+  "appId": "com.process.gpt",
+  "appName": "Process-GPT Live",
+  "webDir": "../process-gpt-vue3/mobile-live/shell",
+  "server": {
+    "url": "http://localhost.10.0.2.2.nip.io:8088",
+    "cleartext": true,
+    "allowNavigation": [
+      "localhost.10.0.2.2.nip.io",
+      "10.0.2.2",
+      "localhost",
+      "127.0.0.1"
+    ]
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  },
+  "loggingBehavior": "debug"
+}

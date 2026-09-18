@@ -1,0 +1,99 @@
+# iOS 빌드.
+#
+# 왜 여기서 도는가
+#   iOS 빌드는 macOS 에서만 된다. Xcode 가 macOS 전용이고, 애플은 macOS 를
+#   애플 하드웨어 위에서만 돌리도록 라이선스로 묶어 두었다. 그래서 윈도우 PC
+#   위의 가상머신은 선택지가 아니다 — 기술적으로 되더라도 약관 위반이다.
+#   GitHub 의 macOS 러너는 실제 맥 위에서 돌므로 이 문제가 없다.
+#
+# 무엇을 만드는가
+#   기본은 **시뮬레이터용 빌드**다. 애플 개발자 계정도 인증서도 필요 없고,
+#   화면이 제대로 나오는지 확인하는 데는 이것으로 충분하다.
+#
+#   실기기에 넣으려면 서명이 필요하고, 서명에는 유료 개발자 계정(연 $99)과
+#   인증서·프로비저닝 프로파일이 있어야 한다. 그 준비가 끝나면 아래 주석 처리한
+#   release 잡을 켠다.
+#
+# 비용
+#   macOS 러너는 분당 요금이 리눅스의 10배로 차감된다. 그래서 push 마다 돌리지
+#   않고 손으로 돌리거나 태그가 붙을 때만 돌린다.
+
+name: ios-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'ios-v*'
+
+jobs:
+  simulator:
+    # 시뮬레이터 빌드 — 서명 없음, 계정 없이 됨.
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 의존성 설치
+        run: npm ci --no-audit --no-fund
+
+      # webDir 은 포털을 감싸는 껍데기 한 장이라 따로 빌드할 것이 없다.
+      # (capacitor.config.json 의 server.url 이 실제 화면을 가져온다.)
+      - name: Capacitor 동기화
+        run: npx cap sync ios
+
+      - name: CocoaPods
+        working-directory: ios/App
+        run: pod install --repo-update
+
+      - name: 시뮬레이터용 빌드
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build | xcpretty || xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 산출물 묶기
+        working-directory: ios/App/build/Build/Products/Debug-iphonesimulator
+        run: zip -r "$GITHUB_WORKSPACE/App-simulator.zip" App.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-app
+          path: App-simulator.zip
+          retention-days: 14
+
+  # 실기기용 서명 빌드.
+  #
+  # 켜기 전에 있어야 하는 것
+  #   1. Apple Developer Program 가입 (연 $99)
+  #   2. 배포 인증서(.p12)와 프로비저닝 프로파일
+  #   3. 아래 secret 등록:
+  #      IOS_CERTIFICATE_P12(base64), IOS_CERTIFICATE_PASSWORD,
+  #      IOS_PROVISIONING_PROFILE(base64), IOS_TEAM_ID
+  #
+  # 인증서를 여러 사람이 나눠 쓸 것이라면 fastlane match 를 쓰는 편이 낫다 —
+  # 인증서를 사설 저장소에 두고 CI 가 받아 쓰는 방식이라, 사람마다 따로
+  # 발급하다 한도(3개)에 걸리는 일이 없다.
+  #
+  # release:
+  #   runs-on: macos-15
+  #   steps: ...

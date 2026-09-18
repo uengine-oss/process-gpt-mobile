@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Process-GPT Live</string>
+    <string name="title_activity_main">Process-GPT Live</string>
+    <string name="package_name">io.processgpt.app</string>
+    <string name="custom_url_scheme">io.processgpt.app</string>
+</resources>

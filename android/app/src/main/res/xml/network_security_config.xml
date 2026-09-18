@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  개발 중에만 평문(http) 을 허용한다.
+
+  왜 필요한가
+    안드로이드 9 부터 http 는 기본으로 막힌다. 로컬 Supabase 는 http 로 뜨므로,
+    막힌 상태에서는 앱이 아무것도 못 읽고 화면만 비어 보인다. 원인이 화면에
+    드러나지 않아 찾기 어렵다.
+
+  왜 주소를 나열하는가
+    cleartextTrafficPermitted 를 전체에 열면 운영 통신도 평문으로 나갈 수 있다.
+    아래 셋은 개발 기기 안에서만 의미가 있는 주소다.
+      10.0.2.2  에뮬레이터에서 본 PC(호스트)
+      localhost / 127.0.0.1  기기 자신
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- 게이트웨이를 조직 이름이 맞는 host 로 부르기 위한 이름. 10.0.2.2 를 가리킨다. -->
+        <domain includeSubdomains="false">localhost.10.0.2.2.nip.io</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,25 @@
+{
+  "appId": "com.process.gpt",
+  "appName": "Process-GPT Live",
+  "webDir": "../process-gpt-vue3/mobile-live/shell",
+  "server": {
+    "url": "https://process-gpt.io",
+    "allowNavigation": [
+      "process-gpt.io",
+      "*.process-gpt.io"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  },
+  "loggingBehavior": "production"
+}

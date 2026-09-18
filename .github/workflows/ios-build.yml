@@ -32,8 +32,25 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
 
+    defaults:
+      run:
+        working-directory: process-gpt-mobile
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: process-gpt-mobile
+
+      # 껍데기가 얓는 appshell.js·css 는 포털 저장소에 있다.
+      # capacitor.config.json 의 webDir 이 '../process-gpt-vue3/mobile-live/shell' 을
+      # 가리키므로 형제 자리에 받아 둔다. 없으면 cap sync 가 경고만 하고
+      # 넘어가서(server.url 이 있으므로) **탭도 경로 제한도 없는 번들**이 나온다.
+      - uses: actions/checkout@v4
+        with:
+          repository: uengine-oss/process-gpt-vue3
+          path: process-gpt-vue3
+          sparse-checkout: mobile-live/shell
+          sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@v4
         with:
@@ -42,17 +59,21 @@ jobs:
       - name: 의존성 설치
         run: npm ci --no-audit --no-fund
 
-      # webDir 은 포털을 감싸는 껍데기 한 장이라 따로 빌드할 것이 없다.
-      # (capacitor.config.json 의 server.url 이 실제 화면을 가져온다.)
+      # 포털은 런타임에 server.url 로 받아온다. 여기서 옮기는 것은 껍데기 한 장뿐이다.
       - name: Capacitor 동기화
         run: npx cap sync ios
 
+      - name: 껍데기 파일이 번들에 들어갔는지 확인
+        run: |
+          test -f ios/App/App/public/appshell.js || { echo 'appshell.js 없음'; exit 1; }
+          test -f ios/App/App/public/appshell.css || { echo 'appshell.css 없음'; exit 1; }
+
       - name: CocoaPods
-        working-directory: ios/App
+        working-directory: process-gpt-mobile/ios/App
         run: pod install --repo-update
 
       - name: 시뮬레이터용 빌드
-        working-directory: ios/App
+        working-directory: process-gpt-mobile/ios/App
         run: |
           set -o pipefail
           xcodebuild \
@@ -72,7 +93,7 @@ jobs:
             build
 
       - name: 산출물 묶기
-        working-directory: ios/App/build/Build/Products/Debug-iphonesimulator
+        working-directory: process-gpt-mobile/ios/App/build/Build/Products/Debug-iphonesimulator
         run: zip -r "$GITHUB_WORKSPACE/App-simulator.zip" App.app
 
       - uses: actions/upload-artifact@v4

@@ -80,6 +80,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PushSupportPlugin.class);
         super.onCreate(savedInstanceState);
         showLoading();
+        createNotificationChannel();
         askNotificationPermission();
     }
 
@@ -218,6 +219,25 @@ public class MainActivity extends BridgeActivity {
                 if (parent instanceof android.view.ViewGroup) ((android.view.ViewGroup) parent).removeView(view);
             }
         }).start();
+    }
+
+    /**
+     * 알림 채널을 만든다 — 중요도 '높음' 이라야 화면 위에 배너로 뜬다.
+     *
+     * 앱이 꺼져 있을 때 오는 알림은 FCM SDK 가 이 채널(메니페스트의 기본 채널)로 띄운다.
+     * 채널이 없으면 중요도 '보통' 인 대체 채널로 가서 알림창에만 조용히 쌓였다 — 사람은
+     * 휴대폰을 내려다보기 전까지 업무가 온 줄 모른다. 이미 있으면 아무 일도 하지 않는다.
+     * (채널 중요도는 만든 뒤에는 앱이 바꿀 수 없다. 바꾸려면 채널 id 를 새로 정해야 한다.)
+     */
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        android.app.NotificationChannel channel = new android.app.NotificationChannel(
+            getString(R.string.notification_channel_id),
+            getString(R.string.notification_channel_name),
+            android.app.NotificationManager.IMPORTANCE_HIGH);
+        channel.enableVibration(true);
+        android.app.NotificationManager manager = getSystemService(android.app.NotificationManager.class);
+        if (manager != null) manager.createNotificationChannel(channel);
     }
 
     /**
@@ -518,6 +538,7 @@ public class MainActivity extends BridgeActivity {
     public void onStop() {
         WebView web = getBridge() != null ? getBridge().getWebView() : null;
         if (web != null && shellPump != null) web.removeCallbacks(shellPump);
+        if (web != null && pushPump != null) web.removeCallbacks(pushPump);
         super.onStop();
     }
 
@@ -544,22 +565,30 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /** 기기 등록을 다시 시도하는 반복 작업. 등록을 마치거나 onStop 에서 멈춘다. */
+    private Runnable pushPump;
+
     /**
      * 이 기기를 알림 받을 곳으로 등록한다.
      *
-     * 포털이 로그인과 조직 이동을 마쳐야 누구인지 읽을 수 있으므로, 한 번 보고
-     * 마는 대신 잠시 간격을 두고 몇 번 시도한다. 이미 등록돼 있으면 같은 줄을
-     * 고칠 뿐이라 여러 번 해도 문제가 없다.
+     * 포털이 로그인과 조직 이동을 마쳐야 누구인지 읽을 수 있으므로, 등록될 때까지
+     * 5초 간격으로 다시 시도한다. 이미 등록돼 있으면 같은 줄을 고칠 뿐이라 여러 번
+     * 해도 문제가 없다.
+     *
+     * 앞서는 켠 뒤 30초(6번)만 시도했다. 처음 설치해 로그인 화면에서 30초 넘게 머물면
+     * 시도가 모두 로그인 전에 끝나(no-session), **앱을 다시 켜기 전까지 알림이 오지 않았다.**
      */
     private void schedulePushRegistration(final WebView web) {
-        for (int i = 1; i <= 6; i++) {
-            web.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    PushRegistrar.register(MainActivity.this, web);
-                }
-            }, i * 5000L);
-        }
+        if (pushPump != null) web.removeCallbacks(pushPump);
+        pushPump = new Runnable() {
+            @Override
+            public void run() {
+                if (PushRegistrar.isDone()) return;
+                PushRegistrar.register(MainActivity.this, web);
+                web.postDelayed(this, 5000L);
+            }
+        };
+        web.postDelayed(pushPump, 5000L);
     }
 
     /**

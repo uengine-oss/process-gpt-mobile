@@ -4,4 +4,6 @@
     <string name="title_activity_main">Process-GPT Live</string>
     <string name="package_name">io.processgpt.app</string>
     <string name="custom_url_scheme">io.processgpt.app</string>
+    <string name="notification_channel_id">pg_alerts</string>
+    <string name="notification_channel_name">업무 · 채팅 알림</string>
 </resources>

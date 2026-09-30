@@ -71,6 +71,11 @@ public class PushRegistrar {
      * 박아 두지 않는 편이 낫다 — 박아 두면 포털이 서버를 옮길 때 앱만 옛 곳을
      * 바라보게 된다.
      */
+    /** 이번 실행에서 등록을 마쳤는가. 마쳤으면 다시 시도하지 않는다. */
+    public static boolean isDone() {
+        return done;
+    }
+
     public static void register(final Context ctx, final WebView web) {
         if (done) return;
 

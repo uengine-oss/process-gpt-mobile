@@ -25,6 +25,15 @@
 
         </activity>
 
+        <!--
+          알림이 쓸 채널. 앱이 꺼져 있을 때는 FCM SDK 가 알림을 직접 띄우는데, 이 값이 없으면
+          중요도 '보통' 인 대체 채널(fcm_fallback_notification_channel)을 써서 화면 위 배너 없이
+          알림창에만 조용히 쌓였다. 채널은 MainActivity.createNotificationChannel 이 만든다.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/notification_channel_id" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

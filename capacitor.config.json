@@ -7,7 +7,8 @@
     "allowNavigation": [
       "process-gpt.io",
       "*.process-gpt.io"
-    ]
+    ],
+    "errorPath": "index.html"
   },
   "android": {
     "allowMixedContent": false

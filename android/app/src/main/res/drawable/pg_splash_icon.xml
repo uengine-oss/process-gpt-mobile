@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  안드로이드 12 이상의 시작 화면 아이콘. 시스템은 아이콘을 원으로 잘라 보이므로(가운데 2/3 만 보인다)
+  마스코트를 안쪽으로 들여 전체가 보이게 한다.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/pg_mascot"
+    android:inset="22%" />

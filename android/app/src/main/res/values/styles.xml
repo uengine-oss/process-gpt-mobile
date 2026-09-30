@@ -15,8 +15,14 @@
         <item name="android:background">@null</item>
     </style>
 
-
+    <!--
+      시작 화면. 흰 바탕에 마스코트를 두어, 곧이어 MainActivity 가 띄우는 로딩 화면
+      (같은 마스코트 + 진행 표시)과 끊김 없이 이어지게 한다.
+    -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">@drawable/pg_launch</item>
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/pg_splash_icon</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

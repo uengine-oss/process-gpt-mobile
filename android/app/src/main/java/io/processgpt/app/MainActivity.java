@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
@@ -24,6 +25,7 @@ import java.net.URI;
  *   1. 알림 (wrapper.js 를 페이지에 얹어 준다)
  *   2. 뒤로 가기 (없으면 어느 화면에서든 앱이 곧바로 닫힌다)
  *   3. 마지막으로 보던 곳 기억 (없으면 켤 때마다 홍보 페이지로 돌아간다)
+ *   4. 켤 때 로딩 화면 (없으면 포털이 뜰 때까지 빈 화면만 보인다)
  *
  * 포털은 자기가 앱 안에서 돈다는 것을 모른다. 그래서 이 셋을 포털에 요구하지
  * 않고 바깥에서 얹는다 — 포털을 건드리기 시작하면 이 앱이 없애려던 이중 작업이
@@ -52,6 +54,10 @@ public class MainActivity extends BridgeActivity {
      */
     private boolean firstStart = true;
 
+    /** 첫 화면으로 열 곳과, 아직 열기 전인지. onNewIntent 가 알림 건으로 바꿔 끼울 수 있다. */
+    private String firstScreenUrl;
+    private boolean firstScreenPending;
+
     /** 이 앱이 머무를 수 있는 곳. 그 밖의 주소는 기억하지도, 되돌아가지도 않는다. */
     private static boolean isOurs(String url) {
         if (url == null || url.isEmpty()) return false;
@@ -73,7 +79,145 @@ public class MainActivity extends BridgeActivity {
         // 웹뷰가 뜨기 전에 등록해야 화면에서 부를 수 있다.
         registerPlugin(PushSupportPlugin.class);
         super.onCreate(savedInstanceState);
+        showLoading();
         askNotificationPermission();
+    }
+
+    /* ─────────────────────────── 로딩 화면 ─────────────────────────── */
+
+    /**
+     * 켤 때 포털이 뜰 때까지 덮어 두는 화면 (마스코트 + 진행 표시).
+     *
+     * 없으면 시작 화면이 사라진 뒤 몇 초 동안 **빈 흰 화면**만 보인다 — 포털을 받아
+     * 그리는 데 시간이 걸리고, 켤 때 한 번 캐시를 비우고 다시 불러오므로(loadFirstScreen)
+     * 그 사이에 한 번 더 비었다가 다시 그려진다. 사람에게는 앱이 멈춘 것처럼 보인다.
+     *
+     * 시작 화면(styles.xml)과 같은 흰 바탕 · 같은 마스코트라서 끊김 없이 이어진다.
+     */
+    private View loadingView;
+    private android.animation.ObjectAnimator loadingBob;
+    private long startedAt;
+
+    /**
+     * 로딩 화면을 걷어도 되는 가장 이른 시각(켠 뒤 ms).
+     * 옛 문서는 timeOrigin 으로 걸러지므로 짧게 둔다 — 첫 화면 이동(loadFirstScreen)이 걸리기 전의
+     * 빈 문서를 "다 떴다" 로 보지 않을 만큼만.
+     */
+    private static final long REVEAL_AFTER_MS = 800;
+
+    /**
+     * 마지막으로 페이지 이동을 지시한 시각(epoch ms).
+     *
+     * 문서의 performance.timeOrigin 이 이보다 앞서면 아직 이동하기 전의 옛 문서다.
+     * 처음에는 옛 문서에 표식을 심었는데, evaluateJavascript 도 이동도 비동기라 표식이
+     * **새 문서에** 심기는 경우가 있었고, 그러면 끝까지 옛 문서로 보여 20초를 다 채웠다.
+     */
+    private volatile long navIssuedAt;
+
+    private void markNavigation() {
+        navIssuedAt = System.currentTimeMillis();
+    }
+
+    /** 아무리 늦어도 이만큼 뒤에는 걷는다 — 판단이 틀려도 앱을 가둬 두지 않는다. */
+    private static final long LOADING_MAX_MS = 20000;
+
+    private void showLoading() {
+        startedAt = android.os.SystemClock.uptimeMillis();
+
+        float dp = getResources().getDisplayMetrics().density;
+
+        android.widget.LinearLayout column = new android.widget.LinearLayout(this);
+        column.setOrientation(android.widget.LinearLayout.VERTICAL);
+        column.setGravity(android.view.Gravity.CENTER);
+        column.setBackgroundColor(android.graphics.Color.WHITE);
+        // 덮여 있는 동안 아래 웹 화면이 눌리지 않게 한다.
+        column.setClickable(true);
+
+        android.widget.ImageView robot = new android.widget.ImageView(this);
+        robot.setImageResource(R.drawable.pg_mascot);
+        robot.setAdjustViewBounds(true);
+        robot.setContentDescription("Process-GPT");
+        column.addView(robot, new android.widget.LinearLayout.LayoutParams((int) (132 * dp), (int) (120 * dp)));
+
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(0xFF1E88E5));
+        android.widget.LinearLayout.LayoutParams barLp = new android.widget.LinearLayout.LayoutParams((int) (120 * dp), (int) (4 * dp));
+        barLp.topMargin = (int) (24 * dp);
+        column.addView(bar, barLp);
+
+        android.widget.TextView label = new android.widget.TextView(this);
+        label.setText("불러오는 중…");
+        label.setTextColor(0xFF6B7280);
+        label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        android.widget.LinearLayout.LayoutParams labelLp = new android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelLp.topMargin = (int) (12 * dp);
+        column.addView(label, labelLp);
+
+        addContentView(column, new android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        loadingView = column;
+
+        // 살짝 떠오르내리게 해서 멈춘 화면이 아니라는 것을 보인다.
+        loadingBob = android.animation.ObjectAnimator.ofFloat(robot, "translationY", 0f, -10 * dp);
+        loadingBob.setDuration(900);
+        loadingBob.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        loadingBob.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        loadingBob.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        loadingBob.start();
+
+        column.postDelayed(this::checkLoaded, 600);
+        // 확인이 어떻게 되든 이만큼 뒤에는 걷는다. 확인 반복과 따로 건다 — 반복이 끊겨도 산다.
+        column.postDelayed(this::hideLoading, LOADING_MAX_MS);
+    }
+
+    /**
+     * 포털이 화면을 그렸는지 본다. 아직이면 잠시 뒤 다시 본다.
+     *
+     * "그렸다" 의 기준: 이동 전 옛 문서가 아니고, 문서를 다 받았고, 포털의 #app 안에
+     * 무언가가 채워졌다. #app 이 없는 문서(연결 실패 화면 등)는 받는 대로 보여 준다.
+     */
+    private void checkLoaded() {
+        if (loadingView == null) return;
+
+        // 다음 확인은 답을 기다리지 않고 먼저 예약한다. 페이지가 옮겨 가는 도중에 물으면
+        // evaluateJavascript 가 답을 주지 않고 버리는데, 답에서 예약하면 거기서 반복이 끊겨
+        // 로딩 화면이 걷히지 않았다.
+        loadingView.postDelayed(this::checkLoaded, 300);
+
+        long elapsed = android.os.SystemClock.uptimeMillis() - startedAt;
+        WebView web = getBridge() != null ? getBridge().getWebView() : null;
+        if (web == null || elapsed < REVEAL_AFTER_MS) return;
+
+        web.evaluateJavascript(
+            "(function(){if(performance.timeOrigin<" + navIssuedAt + ")return 'old';"
+            + "if(document.readyState!=='complete')return 'loading';"
+            + "var a=document.getElementById('app');if(!a)return 'ready';"
+            + "return a.querySelectorAll('*').length>30?'ready':'mounting';})()",
+            new android.webkit.ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String v) {
+                    if (loadingView == null) return;
+                    if ("\"ready\"".equals(v)) hideLoading();
+                }
+            });
+    }
+
+    private void hideLoading() {
+        final View view = loadingView;
+        if (view == null) return;
+        loadingView = null;
+        android.util.Log.i("wrapper", "로딩 화면 걷음: " + (android.os.SystemClock.uptimeMillis() - startedAt) + "ms");
+
+        view.animate().alpha(0f).setDuration(250).withEndAction(new Runnable() {
+            @Override
+            public void run() {
+                if (loadingBob != null) loadingBob.cancel();
+                android.view.ViewParent parent = view.getParent();
+                if (parent instanceof android.view.ViewGroup) ((android.view.ViewGroup) parent).removeView(view);
+            }
+        }).start();
     }
 
     /**
@@ -109,6 +253,20 @@ public class MainActivity extends BridgeActivity {
 
         String url = urlFromIntent();
         if (url == null) return;
+
+        // 앱이 꺼져 있어도 최근 목록에 남아 있으면, 안드로이드는 옛 실행 인텐트로 화면을
+        // 다시 만들고 알림은 여기로 따로 준다. 그때 첫 화면(loadFirstScreen)을 아직 열기
+        // 전이면 목적지만 바꾼다 — 안 그러면 마지막 화면을 열었다가 알림 건으로 한 번 더
+        // 옮겨 가 로딩이 두 배로 걸렸다.
+        if (firstStart) {
+            // onStart 전이다 — loadFirstScreen 이 pendingUrl 을 첫 화면으로 쓴다.
+            pendingUrl = url;
+            return;
+        }
+        if (firstScreenPending) {
+            firstScreenUrl = url;
+            return;
+        }
 
         pendingUrl = url;
         WebView web = getBridge() != null ? getBridge().getWebView() : null;
@@ -161,23 +319,49 @@ public class MainActivity extends BridgeActivity {
         if (!firstStart) return;
         firstStart = false;
 
-        // 포털이 index.html 을 한 시간 캐시하라고 내려보낸다(max-age=3600).
-        // 그러면 포털을 새로 배포해도 **앱은 최대 한 시간 동안 옛 화면**을 본다 —
-        // 실제로 배포된 번들과 앱이 불러온 번들이 서로 달랐다. 이 앱의 값어치는
-        // "지금의 포털을 그대로 보여 주는 것" 이므로, 켤 때 한 번 비운다.
+        // 어디서 시작할지. 알림을 눌러 켰으면 그 건, 아니면 마지막으로 머물던 **조직 주소의 루트**.
         //
-        // 서버가 index.html 에만 no-cache 를 붙이면 이 줄은 지워도 된다.
-        // 그편이 낫다 — 지금은 해시가 붙은 자바스크립트까지 다시 받는다.
-        web.clearCache(true);
+        // 조직 주소로 바로 가는 까닭: 앞서는 lastUrl 을 적어 두기만 하고 읽지 않아서, 켤 때마다
+        // 루트(process-gpt.io)에서 포털이 한 번 뜨고 → 조직 주소로 옮겨 → 또 한 번 떴다.
+        //
+        // 경로는 버리고 루트만 여는 까닭: 첫 화면은 포털이 정한다(모바일은 언제나 정의 체계도 —
+        // process-gpt-vue3 의 src/utils/homePath.ts). 앱이 보던 화면을 되살리면 웹에서 휴대폰으로
+        // 열었을 때와 첫 화면이 달라진다.
+        //
+        // 알림 건은 여기서 바로 연다 — followNotification 의 6초 지연을 거치면 첫 화면이
+        // 떴다가 알림 건으로 한 번 더 바뀐다.
+        firstScreenUrl = pendingUrl != null
+                ? pendingUrl
+                : orgRoot(getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_LAST_URL, null));
+        firstScreenPending = true;
+        pendingUrl = null;
 
-        // 비우기만 하면 늦다. Capacitor 는 이미 캐시에 있던 화면을 띄운 뒤이므로,
-        // 비운 다음 한 번 다시 불러와야 새 화면이 온다.
-        web.postDelayed(new Runnable() {
+        web.post(new Runnable() {
             @Override
             public void run() {
-                web.reload();
+                String first = firstScreenUrl;
+                firstScreenUrl = null;
+                firstScreenPending = false;
+                if (!isOurs(first)) first = isOurs(web.getUrl()) ? web.getUrl() : "https://process-gpt.io/";
+
+                // 포털이 index.html 을 한 시간 캐시하라고 내려보낸다(max-age=3600). 그대로 두면
+                // 포털을 새로 배포해도 **앱은 최대 한 시간 동안 옛 화면**을 본다 — 이 앱의 값어치는
+                // "지금의 포털을 그대로 보여 주는 것" 이므로 켤 때 문서는 새로 받는다.
+                //
+                // 앞서는 clearCache(true) 로 캐시를 통째로 비웠다. 그러면 해시가 붙은 큰
+                // 자바스크립트까지 매번 새로 받아 첫 화면까지 15초 넘게 걸렸다. 해시 파일은 내용이
+                // 바뀌면 이름이 바뀌므로 캐시에 두어도 안전하다 — 문서 요청에만 no-cache 를
+                // 붙인다(이 헤더는 이 요청에만 실리고 딸린 파일 요청에는 실리지 않는다).
+                java.util.Map<String, String> fresh = new java.util.HashMap<>();
+                fresh.put("Cache-Control", "no-cache");
+                fresh.put("Pragma", "no-cache");
+
+                // 이동 시각을 적는다 — 로딩 화면이 옛 문서를 보고 너무 일찍 걷히지 않게.
+                markNavigation();
+                android.util.Log.i("wrapper", "첫 화면: " + first);
+                web.loadUrl(first, fresh);
             }
-        }, 1500);
+        });
     }
 
     /**
@@ -203,11 +387,34 @@ public class MainActivity extends BridgeActivity {
         super.onPause();
 
         WebView web = getBridge() != null ? getBridge().getWebView() : null;
-        if (web == null) return;
+        if (web != null) rememberUrl(web.getUrl());
+    }
 
-        String url = web.getUrl();
+    /** 주소에서 경로를 떼고 조직 주소의 루트만 남긴다. 우리 주소가 아니면 null. */
+    private static String orgRoot(String url) {
+        if (!isOurs(url)) return null;
+        try {
+            URI uri = new URI(url);
+            return uri.getScheme() + "://" + uri.getHost() + "/";
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 지금 보는 곳을 적어 둔다 — 다음에 켤 때 이 조직 주소로 시작하고(loadFirstScreen, 경로는
+     * 버린다), 연결 실패 화면의 "다시 시도" 는 이 주소 그대로 돌아온다.
+     *
+     * 조직이 붙지 않은 루트(process-gpt.io)는 적지 않는다. 앱은 어차피 거기서 시작하고,
+     * 로딩 도중 앱이 내려가면 루트가 적혀서 애써 기억한 조직 주소를 잃는다.
+     */
+    private void rememberUrl(String url) {
         if (!isOurs(url)) return;
-
+        try {
+            if ("process-gpt.io".equals(new URI(url).getHost())) return;
+        } catch (Exception e) {
+            return;
+        }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_LAST_URL, url).apply();
     }
 
@@ -231,15 +438,17 @@ public class MainActivity extends BridgeActivity {
         // 한 번만 따라간다. 남겨 두면 앱을 다시 앞으로 부를 때마다 같은 곳으로 튄다.
         pendingUrl = null;
 
-        // 곧바로 부르면 안 된다. 앱은 이제 막 시작 주소를 여는 중이라, 그 뒤에
+        // 켠 직후에는 곧바로 부르면 안 된다(켠 지 6초가 지났으면 바로 간다 — 이미 떠 있는
+        // 앱에서 알림을 눌렀는데 6초씩 기다릴 까닭이 없다). 앱은 이제 막 시작 주소를 여는 중이라, 그 뒤에
         // 도착하는 기본 이동이 우리 주소를 덮어쓴다.
         web.postDelayed(new Runnable() {
             @Override
             public void run() {
                 android.util.Log.i("wrapper", "알림으로 이동: " + target);
+                markNavigation();
                 web.loadUrl(target);
             }
-        }, 6000);
+        }, Math.max(300L, 6000L - (android.os.SystemClock.uptimeMillis() - startedAt)));
     }
 
     /**
@@ -278,8 +487,13 @@ public class MainActivity extends BridgeActivity {
         shellPump = new Runnable() {
             @Override
             public void run() {
+                // 마지막으로 보던 곳도 함께 알려 준다. 연결 실패 화면(shell/index.html)의 "다시 시도"
+                // 가 이리로 돌아간다 — 그 화면은 앱 안의 파일(https://localhost)이라 Capacitor 통로가
+                // 붙지 않아 네이티브에 물어볼 수 없다.
+                String last = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_LAST_URL, "");
                 web.evaluateJavascript(
-                    "try{" + script + ";''}catch(e){'SHELL_ERR '+(e&&e.message)}",
+                    "window.__pgLastUrl=" + quote(last) + ";"
+                    + "try{" + script + ";''}catch(e){'SHELL_ERR '+(e&&e.message)}",
                     new android.webkit.ValueCallback<String>() {
                         @Override
                         public void onReceiveValue(String v) {
@@ -288,6 +502,8 @@ public class MainActivity extends BridgeActivity {
                             }
                         }
                     });
+                // 앱이 갑자기 끝나도(작업 목록에서 밀어 끄기 등) 보던 곳이 남게 여기서도 적는다.
+                rememberUrl(web.getUrl());
                 web.postDelayed(this, 2000L);
             }
         };

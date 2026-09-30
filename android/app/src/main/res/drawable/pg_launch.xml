@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 안드로이드 12 미만의 시작 화면. 흰 바탕 가운데 마스코트 — 이어서 뜨는 로딩 화면과 같은 모습이다. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/white" />
+    <item android:gravity="center" android:width="132dp" android:height="120dp" android:drawable="@drawable/pg_mascot" />
+</layer-list>
